@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://www.gstatic.com/firebasejs/8.7.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.7.1/firebase-database.js"></script>
+  <script type='text/javascript' src='https://www.bing.com/api/maps/mapcontrol?callback=loadMapScenario' async defer></script>
+  <style>
+    #map {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h1>骨粗鬆症治療エクスプレス</h1>
+  <div id="messages"></div>
+
+  <input type="text" id="destination" placeholder="依頼先">
+  <input type="text" id="postalcode" placeholder="郵便番号">
+  <button id="searchBtn">検索</button>
+  <div id="map" style="width: 100%; height: 400px;"></div> <!-- 地図表示エリア -->
+
+  <input type="text" id="clinicName" placeholder="自院名称">
+  <input type="text" id="username" placeholder="患者名">
+  <input type="text" id="birthDate" placeholder="生年月日">
+  <textarea id="message">本患者様では骨粗鬆症薬物治療の検討をしております。つきましては、下記フォーマットにて御返信いただけますと幸いです。</textarea>
+
+  <button onclick="sendMessage()">Send</button>
+
+  <!-- 返答欄 -->
+  <button onclick="sendReply('治療開始可')">治療開始可</button>
+  <button onclick="sendReply('当院受診指示をお願いします')">当院受診指示をお願いします</button>
+  <button onclick="openReplyPopup()">その他</button>
+  <div id="otherReplyPopup" style="display: none;">
+      <textarea id="otherReply"></textarea>
+      <button onclick="sendOtherReply()">Send</button>
+  </div>
+
+<script>
+  var config = {
+    apiKey: "AIzaSyCd4YY_2NQMun_FtTXvne3VdcoiBTl6co4",
+    authDomain: "osteo-project-5ccd7.firebaseapp.com",
+    databaseURL: "https://osteo-project-5ccd7-default-rtdb.firebaseio.com",
+    projectId: "osteo-project-5ccd7",
+    storageBucket: "osteo-project-5ccd7.appspot.com",
+    messagingSenderId: "1003502839327",
+    appId: "1:1003502839327:web:0f9c2fb3235a113343972a"
+  };
+
+  firebase.initializeApp(config);
+  var database = firebase.database();
+
+  var map;
+
+  function loadMapScenario() {
+    map = new Microsoft.Maps.Map(document.getElementById('map'), {
+      credentials: "Ali6qjABrD43eRqfALi7-x8NgJnu7CbMQV5aPYrW6nGbELFoRcH1VRgHVcpvLJV-",
+      center: new Microsoft.Maps.Location(35.6895, 139.6917), // Default location
+      zoom: 10
+    });
+  }
+
+  function getCoordinates(postalCode, callback) {
+    var searchManager = new Microsoft.Maps.Search.SearchManager(map);
+    var requestOptions = {
+      where: postalCode,
+      callback: function (answer, userData) {
+        if (answer && answer.results && answer.results.length > 0) {
+          var firstResult = answer.results[0];
+          callback(firstResult.location.latitude, firstResult.location.longitude);
+        }
+      }
+    };
+    searchManager.geocode(requestOptions);
+  }
+
+  function sendMessage() {
+    var destination = document.getElementById("destination").value;
+    var clinicName = document.getElementById("clinicName").value;
+    var username = document.getElementById("username").value;
+    var birthDate = document.getElementById("birthDate").value;
+    var message = document.getElementById("message").value;
+
+    if (destination && clinicName && username && birthDate && message) {
+      var messagesRef = database.ref('messages');
+      var newMessageRef = messagesRef.push();
+      newMessageRef.set({
+        destination: destination,
+        clinicName: clinicName,
+        user: username,
+        birthDate: birthDate,
+        text: message
+      })
+        .then(() => {
+          // メッセージ送信が成功した後、入力フィールドをクリアする
+          document.getElementById("destination").value = "";
+          document.getElementById("clinicName").value = "";
+          document.getElementById("username").value = "";
+          document.getElementById("birthDate").value = "";
+          document.getElementById("message").value = "";
+        })
+        .catch((error) => {
+          // エラーメッセージを表示する
+          alert("メッセージの送信に失敗しました。エラー: " + error.message);
+        });
+    }
+    else {
+      // 全てのフィールドが入力されていない場合、エラーメッセージを表示する
+      alert("全てのフィールドを入力してください");
+    }
+  }
+
+  function sendReply(reply) {
+    var messagesRef = database.ref('messages');
+    var newMessageRef = messagesRef.push();
+    newMessageRef.set({
+      reply: reply
+    });
+  }
+
+  function openReplyPopup() {
+    document.getElementById("otherReplyPopup").style.display = "block";
+  }
+
+  function sendOtherReply() {
+    var reply = document.getElementById("otherReply").value;
+    if (reply) {
+      sendReply(reply);
+      document.getElementById("otherReply").value = '';
+      document.getElementById("otherReplyPopup").style.display = "none";
+    }
+  }
+
+  var messagesRef = database.ref('messages');
+  messagesRef.on('value', (snapshot) => {
+    var data = snapshot.val();
+    var messagesDiv = document.getElementById("messages");
+    messagesDiv.innerHTML = ""; // clear existing messages
+
+    for (var key in data) {
+      if (data[key].reply) {
+        messagesDiv.innerHTML += 'Reply: ' + data[key].reply + '<br>';
+      } else {
+        messagesDiv.innerHTML += data[key].clinicName + ' (' + data[key].user + ', ' + data[key].birthDate + '): ' + data[key].text + '<br>';
+      }
+    }
+  });
+
+// 「検索」ボタンがクリックされたときの処理を追加
+document.getElementById('searchBtn').addEventListener('click', function() {
+  var postalCode = document.getElementById('postalcode').value;
+  getCoordinates(postalCode, function(lat, lng) {
+    map.setView({ center: new Microsoft.Maps.Location(lat, lng), zoom: 15 });
+  });
+});
+</script>
+</body>
+</html>
